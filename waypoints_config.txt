@@ -1,0 +1,90 @@
+# Waypoint Configuration for Autonomous Drone Flight
+# Define a series of 3D waypoints for the drone to navigate
+
+waypoints:
+  # Takeoff position
+  - x: 0.0
+    y: 0.0
+    z: 5.0
+    description: "Takeoff and hover"
+  
+  # First waypoint - move forward
+  - x: 10.0
+    y: 0.0
+    z: 5.0
+    description: "Move forward 10m"
+  
+  # Second waypoint - move right and up
+  - x: 10.0
+    y: 10.0
+    z: 7.0
+    description: "Move right and climb"
+  
+  # Third waypoint - navigate around tower
+  - x: 5.0
+    y: 10.0
+    z: 7.0
+    description: "Navigate around obstacle"
+  
+  # Fourth waypoint - move left
+  - x: 0.0
+    y: 10.0
+    z: 6.0
+    description: "Continue left"
+  
+  # Fifth waypoint - descend and return
+  - x: 0.0
+    y: 5.0
+    z: 4.0
+    description: "Descend and return"
+  
+  # Landing position
+  - x: 0.0
+    y: 0.0
+    z: 2.0
+    description: "Approach landing"
+
+# Flight parameters
+tolerance: 0.5          # Waypoint reached tolerance in meters
+max_velocity: 3.0       # Maximum velocity in m/s
+max_acceleration: 2.0   # Maximum acceleration in m/s^2
+loiter_time: 2.0        # Time to hover at each waypoint in seconds
+
+# Safety parameters
+min_altitude: 0.5       # Minimum safe altitude in meters
+max_altitude: 50.0      # Maximum altitude limit in meters
+geofence_radius: 50.0   # Maximum distance from origin in meters
+emergency_descent_rate: 1.0  # Emergency descent rate in m/s
+
+# Advanced patterns (optional - uncomment to use)
+# Square pattern
+# waypoints:
+#   - {x: 0.0, y: 0.0, z: 5.0}
+#   - {x: 10.0, y: 0.0, z: 5.0}
+#   - {x: 10.0, y: 10.0, z: 5.0}
+#   - {x: 0.0, y: 10.0, z: 5.0}
+#   - {x: 0.0, y: 0.0, z: 5.0}
+
+# Circle pattern (8 points)
+# waypoints:
+#   - {x: 10.0, y: 0.0, z: 5.0}
+#   - {x: 7.07, y: 7.07, z: 5.0}
+#   - {x: 0.0, y: 10.0, z: 5.0}
+#   - {x: -7.07, y: 7.07, z: 5.0}
+#   - {x: -10.0, y: 0.0, z: 5.0}
+#   - {x: -7.07, y: -7.07, z: 5.0}
+#   - {x: 0.0, y: -10.0, z: 5.0}
+#   - {x: 7.07, y: -7.07, z: 5.0}
+#   - {x: 10.0, y: 0.0, z: 5.0}
+
+# Figure-8 pattern
+# waypoints:
+#   - {x: 0.0, y: 0.0, z: 5.0}
+#   - {x: 5.0, y: 2.5, z: 5.0}
+#   - {x: 7.5, y: 5.0, z: 5.0}
+#   - {x: 5.0, y: 7.5, z: 5.0}
+#   - {x: 0.0, y: 5.0, z: 5.0}
+#   - {x: -5.0, y: 2.5, z: 5.0}
+#   - {x: -7.5, y: 0.0, z: 5.0}
+#   - {x: -5.0, y: -2.5, z: 5.0}
+#   - {x: 0.0, y: 0.0, z: 5.0}

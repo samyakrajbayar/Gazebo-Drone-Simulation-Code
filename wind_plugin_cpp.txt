@@ -1,0 +1,226 @@
+#ifndef GAZEBO_WIND_PLUGIN_HH
+#define GAZEBO_WIND_PLUGIN_HH
+
+#include <gazebo/gazebo.hh>
+#include <gazebo/physics/physics.hh>
+#include <gazebo/common/common.hh>
+#include <ros/ros.h>
+#include <geometry_msgs/Vector3.h>
+#include <random>
+
+namespace gazebo
+{
+  class WindPlugin : public ModelPlugin
+  {
+    public:
+      WindPlugin() : ModelPlugin()
+      {
+        this->wind_velocity_ = ignition::math::Vector3d(0, 0, 0);
+        this->wind_direction_ = 0.0;
+        this->wind_speed_ = 0.0;
+        this->turbulence_intensity_ = 0.1;
+      }
+
+      ~WindPlugin()
+      {
+        this->update_connection_.reset();
+        if (this->nh_)
+        {
+          this->nh_->shutdown();
+          delete this->nh_;
+        }
+      }
+
+      void Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
+      {
+        // Store the model pointer
+        this->model_ = _model;
+        this->world_ = _model->GetWorld();
+
+        // Get SDF parameters
+        if (_sdf->HasElement("wind_speed"))
+          this->wind_speed_ = _sdf->Get<double>("wind_speed");
+        
+        if (_sdf->HasElement("wind_direction"))
+          this->wind_direction_ = _sdf->Get<double>("wind_direction");
+        
+        if (_sdf->HasElement("turbulence"))
+          this->turbulence_intensity_ = _sdf->Get<double>("turbulence");
+
+        if (_sdf->HasElement("frame_id"))
+          this->frame_id_ = _sdf->Get<std::string>("frame_id");
+        else
+          this->frame_id_ = "world";
+
+        // Initialize ROS
+        if (!ros::isInitialized())
+        {
+          int argc = 0;
+          char **argv = NULL;
+          ros::init(argc, argv, "gazebo_wind_plugin",
+                    ros::init_options::NoSigintHandler);
+        }
+
+        this->nh_ = new ros::NodeHandle("~");
+        
+        // Publisher for wind information
+        this->wind_pub_ = this->nh_->advertise<geometry_msgs::Vector3>("/wind", 10);
+
+        // Calculate initial wind velocity vector
+        this->UpdateWindVelocity();
+
+        // Initialize random number generator for turbulence
+        this->random_generator_.seed(std::random_device{}());
+        this->normal_distribution_ = std::normal_distribution<double>(0.0, 1.0);
+
+        // Listen to the update event
+        this->update_connection_ = event::Events::ConnectWorldUpdateBegin(
+            std::bind(&WindPlugin::OnUpdate, this));
+
+        gzdbg << "Wind Plugin loaded. Speed: " << this->wind_speed_ 
+              << " m/s, Direction: " << this->wind_direction_ << " degrees\n";
+      }
+
+      void OnUpdate()
+      {
+        // Get simulation time
+        common::Time current_time = this->world_->SimTime();
+        double dt = (current_time - this->last_time_).Double();
+        
+        if (dt < 0.001)
+          return;
+        
+        this->last_time_ = current_time;
+
+        // Add turbulence (Dryden wind turbulence model simplified)
+        ignition::math::Vector3d turbulence(
+            this->normal_distribution_(this->random_generator_) * this->turbulence_intensity_,
+            this->normal_distribution_(this->random_generator_) * this->turbulence_intensity_,
+            this->normal_distribution_(this->random_generator_) * this->turbulence_intensity_ * 0.5
+        );
+
+        // Total wind velocity with turbulence
+        ignition::math::Vector3d total_wind = this->wind_velocity_ + turbulence;
+
+        // Apply wind force to all links
+        physics::Link_V links = this->model_->GetLinks();
+        for (auto link : links)
+        {
+          // Get link velocity
+          ignition::math::Vector3d link_velocity = link->WorldLinearVel();
+          
+          // Relative wind velocity
+          ignition::math::Vector3d relative_wind = total_wind - link_velocity;
+          
+          // Wind force (simplified drag model)
+          // F = 0.5 * rho * Cd * A * v^2
+          double air_density = 1.225; // kg/m^3 at sea level
+          double drag_coefficient = 0.8;
+          double reference_area = 0.1; // m^2 (approximate for quadrotor)
+          
+          double wind_speed_magnitude = relative_wind.Length();
+          ignition::math::Vector3d wind_direction_normalized = relative_wind.Normalized();
+          
+          double force_magnitude = 0.5 * air_density * drag_coefficient * 
+                                  reference_area * wind_speed_magnitude * wind_speed_magnitude;
+          
+          ignition::math::Vector3d wind_force = wind_direction_normalized * force_magnitude;
+          
+          // Apply force at center of mass
+          link->AddForce(wind_force);
+          
+          // Add rotational disturbance (moment due to wind)
+          ignition::math::Vector3d wind_moment = ignition::math::Vector3d(
+              this->normal_distribution_(this->random_generator_) * force_magnitude * 0.1,
+              this->normal_distribution_(this->random_generator_) * force_magnitude * 0.1,
+              this->normal_distribution_(this->random_generator_) * force_magnitude * 0.05
+          );
+          
+          link->AddTorque(wind_moment);
+        }
+
+        // Publish wind information
+        if (this->wind_pub_.getNumSubscribers() > 0)
+        {
+          geometry_msgs::Vector3 wind_msg;
+          wind_msg.x = total_wind.X();
+          wind_msg.y = total_wind.Y();
+          wind_msg.z = total_wind.Z();
+          this->wind_pub_.publish(wind_msg);
+        }
+      }
+
+    private:
+      void UpdateWindVelocity()
+      {
+        // Convert direction from degrees to radians
+        double direction_rad = this->wind_direction_ * M_PI / 180.0;
+        
+        // Calculate wind velocity components (NED frame)
+        // Direction 0 = North (positive X), 90 = East (positive Y)
+        this->wind_velocity_.X(this->wind_speed_ * cos(direction_rad));
+        this->wind_velocity_.Y(this->wind_speed_ * sin(direction_rad));
+        this->wind_velocity_.Z(0.0);
+      }
+
+      // Gazebo members
+      physics::ModelPtr model_;
+      physics::WorldPtr world_;
+      event::ConnectionPtr update_connection_;
+      common::Time last_time_;
+      
+      // Wind parameters
+      ignition::math::Vector3d wind_velocity_;
+      double wind_speed_;
+      double wind_direction_;
+      double turbulence_intensity_;
+      std::string frame_id_;
+      
+      // Turbulence
+      std::default_random_engine random_generator_;
+      std::normal_distribution<double> normal_distribution_;
+      
+      // ROS
+      ros::NodeHandle* nh_;
+      ros::Publisher wind_pub_;
+  };
+
+  // Register this plugin with the simulator
+  GZ_REGISTER_MODEL_PLUGIN(WindPlugin)
+}
+
+#endif // GAZEBO_WIND_PLUGIN_HH
+
+
+/*
+ * CMakeLists.txt for compiling the plugin:
+ * 
+ * cmake_minimum_required(VERSION 3.0.2)
+ * project(drone_autopilot_sim)
+ * 
+ * find_package(catkin REQUIRED COMPONENTS
+ *   roscpp
+ *   gazebo_ros
+ *   geometry_msgs
+ * )
+ * 
+ * find_package(gazebo REQUIRED)
+ * 
+ * catkin_package(
+ *   CATKIN_DEPENDS roscpp gazebo_ros geometry_msgs
+ * )
+ * 
+ * include_directories(
+ *   ${catkin_INCLUDE_DIRS}
+ *   ${GAZEBO_INCLUDE_DIRS}
+ * )
+ * 
+ * link_directories(${GAZEBO_LIBRARY_DIRS})
+ * 
+ * add_library(gazebo_wind_plugin src/wind_plugin.cpp)
+ * target_link_libraries(gazebo_wind_plugin ${catkin_LIBRARIES} ${GAZEBO_LIBRARIES})
+ * 
+ * install(TARGETS gazebo_wind_plugin
+ *   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+ * )
+ */

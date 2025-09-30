@@ -1,0 +1,74 @@
+<?xml version="1.0"?>
+<launch>
+  
+  <!-- Launch Arguments -->
+  <arg name="paused" default="false"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="headless" default="false"/>
+  <arg name="debug" default="false"/>
+  <arg name="verbose" default="false"/>
+  <arg name="world_name" default="$(find drone_autopilot_sim)/worlds/drone_world.world"/>
+  <arg name="wind_speed" default="3.0"/>
+  <arg name="wind_direction" default="0"/>
+  <arg name="x" default="0"/>
+  <arg name="y" default="0"/>
+  <arg name="z" default="0.5"/>
+  <arg name="yaw" default="0"/>
+  
+  <!-- Set use_sim_time parameter -->
+  <param name="/use_sim_time" value="$(arg use_sim_time)"/>
+  
+  <!-- Start Gazebo -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world_name)"/>
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="headless" value="$(arg headless)"/>
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="verbose" value="$(arg verbose)"/>
+  </include>
+  
+  <!-- Spawn quadrotor model -->
+  <param name="robot_description" 
+         command="$(find xacro)/xacro '$(find drone_autopilot_sim)/models/quadrotor/model.sdf'" />
+  
+  <node name="spawn_quadrotor" pkg="gazebo_ros" type="spawn_model"
+        args="-sdf -param robot_description -model quadrotor
+              -x $(arg x) -y $(arg y) -z $(arg z) -Y $(arg yaw)"
+        output="screen"/>
+  
+  <!-- Robot state publisher -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+  
+  <!-- Joint state publisher -->
+  <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher"/>
+  
+  <!-- Load waypoint parameters -->
+  <rosparam command="load" file="$(find drone_autopilot_sim)/config/waypoints.yaml" />
+  
+  <!-- Wind parameters -->
+  <param name="wind_speed" value="$(arg wind_speed)"/>
+  <param name="wind_direction" value="$(arg wind_direction)"/>
+  
+  <!-- TF transformation -->
+  <node pkg="tf" type="static_transform_publisher" name="world_to_odom"
+        args="0 0 0 0 0 0 world odom 100"/>
+  
+  <!-- RViz for visualization (optional) -->
+  <node if="$(arg gui)" name="rviz" pkg="rviz" type="rviz" 
+        args="-d $(find drone_autopilot_sim)/config/drone_sim.rviz"
+        required="false"/>
+  
+  <!-- RQT plot for monitoring -->
+  <node name="rqt_plot" pkg="rqt_plot" type="rqt_plot"
+        args="/ground_truth/state/pose/pose/position/z /autopilot/target_pose/pose/position/z"
+        required="false"/>
+  
+  <!-- Log info -->
+  <node name="log_info" pkg="rospy_tutorials" type="talker" output="screen">
+    <param name="message" value="Drone simulation launched successfully!"/>
+  </node>
+  
+</launch>
